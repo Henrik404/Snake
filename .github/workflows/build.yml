@@ -1,0 +1,59 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pyinstaller main.py --onefile --noconsole --icon "assets/images/icon.ico" --add-data "assets;assets"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            pyinstaller main.py --onefile --windowed --icon "assets/images/icon.icns" --add-data "assets:assets"
+          else
+            pyinstaller main.py --onefile --noconsole --add-data "assets:assets"
+          fi
+        shell: bash
+
+      - name: Zip executable
+        shell: pwsh
+        run: |
+          mkdir release
+          $version = "${{ github.ref_name }}"
+          if ($env:RUNNER_OS -eq "Windows") {
+            Move-Item -Path dist\* -Destination release
+            Compress-Archive -Path release\* -DestinationPath "release/snake-$version-windows.zip"
+          } elseif ($env:RUNNER_OS -eq "macOS") {
+            mv dist/* release/
+            zip -r "release/snake-$version-macos.zip" release/*
+          } else {
+            mv dist/* release/
+            zip -r "release/snake-$version-linux.zip" release/*
+          }
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
